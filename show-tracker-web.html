@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Show Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app"></div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyC6D4tB_Y5qog3MJ8ZJcdmo_MFg39CiLyA",
+            authDomain: "show-tracker-716ac.firebaseapp.com",
+            projectId: "show-tracker-716ac",
+            storageBucket: "show-tracker-716ac.firebasestorage.app",
+            messagingSenderId: "796132921481",
+            appId: "1:796132921481:web:d449f07b3d691186593658"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const TVMAZE_BASE = 'https://api.tvmaze.com';
+        const OMDB_BASE = 'https://www.omdbapi.com';
+        const OMDB_KEY = 'b9a5c0fd';
+
+        const SERVICES = [
+            'Netflix', 'Prime Video', 'Hulu', 'Disney+', 'HBO Max',
+            'Apple TV+', 'Paramount+', 'Peacock', 'Other'
+        ];
+
+        let shows = [];
+        let history = [];
+        let view = 'watchlist';
+        let showForm = false;
+        let searchMode = true;
+        let searchQuery = '';
+        let searchResults = [];
+        let searching = false;
+        let selectedShow = null;
+        let contentType = 'series';
+        let formData = {
+            title: '',
+            year: '',
+            genres: '',
+            service: 'Netflix',
+            notes: ''
+        };
+        let filterText = '';
+        let showFilters = false;
+        let filterService = 'all';
+        let filterType = 'all';
+        let ratingShow = null;
+        let isRendering = false;
+
+        onSnapshot(query(collection(db, 'shows'), orderBy('addedDate', 'desc')), (snapshot) => {
+            shows = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            smartRender();
+        });
+
+        onSnapshot(query(collection(db, 'history'), orderBy('watchedDate', 'desc')), (snapshot) => {
+            history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            smartRender();
+        });
+
+        function smartRender() {
+            if (isRendering) return;
+            
+            const activeElement = document.activeElement;
+            const activeId = activeElement?.id;
+            const selectionStart = activeElement?.selectionStart;
+            const selectionEnd = activeElement?.selectionEnd;
+            
+            render();
+            
+            if (activeId) {
+                setTimeout(() => {
+                    const element = document.getElementById(activeId);
+                    if (element) {
+                        element.focus();
+                        if (typeof selectionStart === 'number' && typeof selectionEnd === 'number') {
+                            element.setSelectionRange(selectionStart, selectionEnd);
+                        }
+                    }
+                }, 0);
+            }
+        }
+
+        let searchTimeout;
+        function handleSearchInput(value) {
+            searchQuery = value;
+            clearTimeout(searchTimeout);
+            if (!value.trim()) {
+                searchResults = [];
+                smartRender();
+                return;
+            }
+            searchTimeout = setTimeout(() => searchContent(value), 500);
+            smartRender();
+        }
+
+        async function searchContent(query) {
+            console.log('🔍 Searching for:', query, 'type:', contentType);
+            searching = true;
+            smartRender();
+
+            try {
+                if (contentType === 'series') {
+                    const url = `${TVMAZE_BASE}/search/shows?q=${encodeURIComponent(query)}`;
+                    console.log('📡 Fetching from:', url);
+                    const res = await fetch(url);
+                    console.log('✅ Status:', res.status);
+                    const data = await res.json();
+                    console.log('📦 Results:', data);
+                    searchResults = data.map(item => item.show);
+                } else {
+                    const url = `${OMDB_BASE}/?apikey=${OMDB_KEY}&s=${encodeURIComponent(query)}&type=movie`;
+                    console.log('📡 Fetching from:', url);
+                    const res = await fetch(url);
+                    console.log('✅ Status:', res.status);
+                    const data = await res.json();
+                    console.log('📦 Results:', data);
+                    if (data.Search) {
+                        const detailed = await Promise.all(
+                            data.Search.slice(0, 8).map(async (movie) => {
+                                const detailRes = await fetch(`${OMDB_BASE}/?apikey=${OMDB_KEY}&i=${movie.imdbID}&plot=full`);
+                                return await detailRes.json();
+                            })
+                        );
+                        searchResults = detailed.filter(m => m.Response === 'True');
+                    } else {
+                        searchResults = [];
+                    }
+                }
+            } catch (err) {
+                console.error('❌ Error:', err);
+                searchResults = [];
+            }
+            searching = false;
+            smartRender();
+        }
+
+        async function addShowFromSearch() {
+            if (!selectedShow) return;
+
+            const isMovie = contentType === 'movie';
+            let showData = {
+                title: '',
+                service: formData.service,
+                notes: formData.notes,
+                addedDate: new Date().toISOString(),
+                type: isMovie ? 'movie' : 'series',
+                tmdbData: {}
+            };
+
+            if (isMovie) {
+                showData.title = selectedShow.Title;
+                showData.tmdbData = {
+                    overview: selectedShow.Plot,
+                    releaseDate: selectedShow.Released,
+                    genres: selectedShow.Genre ? selectedShow.Genre.split(', ') : [],
+                    posterPath: selectedShow.Poster !== 'N/A' ? selectedShow.Poster : null,
+                    rating: selectedShow.imdbRating !== 'N/A' ? parseFloat(selectedShow.imdbRating) : null,
+                    runtime: selectedShow.Runtime !== 'N/A' ? parseInt(selectedShow.Runtime) : null,
+                    cast: selectedShow.Actors !== 'N/A' ? selectedShow.Actors : '',
+                    director: selectedShow.Director !== 'N/A' ? selectedShow.Director : ''
+                };
+            } else {
+                showData.title = selectedShow.name;
+                showData.tmdbData = {
+                    overview: selectedShow.summary ? selectedShow.summary.replace(/<[^>]*>/g, '') : '',
+                    releaseDate: selectedShow.premiered,
+                    genres: selectedShow.genres || [],
+                    posterPath: selectedShow.image?.medium || selectedShow.image?.original,
+                    rating: selectedShow.rating?.average,
+                    runtime: selectedShow.runtime || selectedShow.averageRuntime,
+                    status: selectedShow.status
+                };
+
+                try {
+                    const episodesRes = await fetch(`${TVMAZE_BASE}/shows/${selectedShow.id}/episodes`);
+                    const episodesData = await episodesRes.json();
+                    showData.tmdbData.numberOfEpisodes = episodesData.length;
+                    const seasonNums = episodesData.map(ep => ep.season);
+                    showData.tmdbData.numberOfSeasons = Math.max(...seasonNums);
+                } catch (err) {
+                    console.log('Could not fetch episode data');
+                }
+
+                try {
+                    const castRes = await fetch(`${TVMAZE_BASE}/shows/${selectedShow.id}/cast`);
+                    const castData = await castRes.json();
+                    showData.tmdbData.cast = castData.slice(0, 5).map(c => c.person.name).join(', ');
+                } catch (err) {
+                    console.log('Could not fetch cast data');
+                }
+            }
+
+            await addDoc(collection(db, 'shows'), showData);
+            resetForm();
+        }
+
+        async function addManualShow() {
+            if (!formData.title.trim()) return;
+
+            const showData = {
+                title: formData.title.trim(),
+                service: formData.service,
+                notes: formData.notes.trim(),
+                addedDate: new Date().toISOString(),
+                type: contentType,
+                tmdbData: {
+                    overview: '',
+                    releaseDate: formData.year || null,
+                    genres: formData.genres ? formData.genres.split(',').map(g => g.trim()) : [],
+                    posterPath: null,
+                    rating: null
+                }
+            };
+
+            await addDoc(collection(db, 'shows'), showData);
+            resetForm();
+        }
+
+        async function markWatched(show, rating) {
+            const watchedData = { ...show, watchedDate: new Date().toISOString(), rating };
+            delete watchedData.id;
+            await addDoc(collection(db, 'history'), watchedData);
+            await deleteDoc(doc(db, 'shows', show.id));
+            ratingShow = null;
+            smartRender();
+        }
+
+        async function deleteShow(id) {
+            await deleteDoc(doc(db, 'shows', id));
+        }
+
+        async function deleteHistory(id) {
+            await deleteDoc(doc(db, 'history', id));
+        }
+
+        async function moveToWatchlist(item) {
+            const showData = {
+                title: item.title,
+                service: item.service,
+                notes: item.notes,
+                type: item.type,
+                tmdbData: item.tmdbData,
+                addedDate: new Date().toISOString()
+            };
+            await addDoc(collection(db, 'shows'), showData);
+            await deleteDoc(doc(db, 'history', item.id));
+        }
+
+        function resetForm() {
+            showForm = false;
+            searchMode = true;
+            searchQuery = '';
+            searchResults = [];
+            selectedShow = null;
+            formData = { title: '', year: '', genres: '', service: 'Netflix', notes: '' };
+            contentType = 'series';
+            smartRender();
+        }
+
+        function filterItems(items) {
+            return items.filter(item => {
+                const matchesText = !filterText ||
+                    item.title.toLowerCase().includes(filterText.toLowerCase()) ||
+                    item.service.toLowerCase().includes(filterText.toLowerCase()) ||
