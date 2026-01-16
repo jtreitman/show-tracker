@@ -37,10 +37,7 @@
         const OMDB_BASE = 'https://www.omdbapi.com';
         const OMDB_KEY = 'b9a5c0fd';
 
-        const SERVICES = [
-            'Netflix', 'Prime Video', 'Hulu', 'Disney+', 'HBO Max',
-            'Apple TV+', 'Paramount+', 'Peacock', 'Other'
-        ];
+        const SERVICES = ['Netflix', 'Prime Video', 'Hulu', 'Disney+', 'HBO Max', 'Apple TV+', 'Paramount+', 'Peacock', 'Other'];
 
         let shows = [];
         let history = [];
@@ -52,13 +49,7 @@
         let searching = false;
         let selectedShow = null;
         let contentType = 'series';
-        let formData = {
-            title: '',
-            year: '',
-            genres: '',
-            service: 'Netflix',
-            notes: ''
-        };
+        let formData = { title: '', year: '', genres: '', service: 'Netflix', notes: '' };
         let filterText = '';
         let showFilters = false;
         let filterService = 'all';
@@ -78,14 +69,11 @@
 
         function smartRender() {
             if (isRendering) return;
-            
             const activeElement = document.activeElement;
             const activeId = activeElement?.id;
             const selectionStart = activeElement?.selectionStart;
             const selectionEnd = activeElement?.selectionEnd;
-            
             render();
-            
             if (activeId) {
                 setTimeout(() => {
                     const element = document.getElementById(activeId);
@@ -116,23 +104,16 @@
             console.log('🔍 Searching for:', query, 'type:', contentType);
             searching = true;
             smartRender();
-
             try {
                 if (contentType === 'series') {
                     const url = `${TVMAZE_BASE}/search/shows?q=${encodeURIComponent(query)}`;
-                    console.log('📡 Fetching from:', url);
                     const res = await fetch(url);
-                    console.log('✅ Status:', res.status);
                     const data = await res.json();
-                    console.log('📦 Results:', data);
                     searchResults = data.map(item => item.show);
                 } else {
                     const url = `${OMDB_BASE}/?apikey=${OMDB_KEY}&s=${encodeURIComponent(query)}&type=movie`;
-                    console.log('📡 Fetching from:', url);
                     const res = await fetch(url);
-                    console.log('✅ Status:', res.status);
                     const data = await res.json();
-                    console.log('📦 Results:', data);
                     if (data.Search) {
                         const detailed = await Promise.all(
                             data.Search.slice(0, 8).map(async (movie) => {
@@ -146,7 +127,7 @@
                     }
                 }
             } catch (err) {
-                console.error('❌ Error:', err);
+                console.error('Error:', err);
                 searchResults = [];
             }
             searching = false;
@@ -155,19 +136,16 @@
 
         async function addShowFromSearch() {
             if (!selectedShow) return;
-
             const isMovie = contentType === 'movie';
             let showData = {
-                title: '',
+                title: isMovie ? selectedShow.Title : selectedShow.name,
                 service: formData.service,
                 notes: formData.notes,
                 addedDate: new Date().toISOString(),
                 type: isMovie ? 'movie' : 'series',
                 tmdbData: {}
             };
-
             if (isMovie) {
-                showData.title = selectedShow.Title;
                 showData.tmdbData = {
                     overview: selectedShow.Plot,
                     releaseDate: selectedShow.Released,
@@ -179,7 +157,6 @@
                     director: selectedShow.Director !== 'N/A' ? selectedShow.Director : ''
                 };
             } else {
-                showData.title = selectedShow.name;
                 showData.tmdbData = {
                     overview: selectedShow.summary ? selectedShow.summary.replace(/<[^>]*>/g, '') : '',
                     releaseDate: selectedShow.premiered,
@@ -189,33 +166,25 @@
                     runtime: selectedShow.runtime || selectedShow.averageRuntime,
                     status: selectedShow.status
                 };
-
                 try {
                     const episodesRes = await fetch(`${TVMAZE_BASE}/shows/${selectedShow.id}/episodes`);
                     const episodesData = await episodesRes.json();
                     showData.tmdbData.numberOfEpisodes = episodesData.length;
                     const seasonNums = episodesData.map(ep => ep.season);
                     showData.tmdbData.numberOfSeasons = Math.max(...seasonNums);
-                } catch (err) {
-                    console.log('Could not fetch episode data');
-                }
-
+                } catch (err) {}
                 try {
                     const castRes = await fetch(`${TVMAZE_BASE}/shows/${selectedShow.id}/cast`);
                     const castData = await castRes.json();
                     showData.tmdbData.cast = castData.slice(0, 5).map(c => c.person.name).join(', ');
-                } catch (err) {
-                    console.log('Could not fetch cast data');
-                }
+                } catch (err) {}
             }
-
             await addDoc(collection(db, 'shows'), showData);
             resetForm();
         }
 
         async function addManualShow() {
             if (!formData.title.trim()) return;
-
             const showData = {
                 title: formData.title.trim(),
                 service: formData.service,
@@ -230,7 +199,6 @@
                     rating: null
                 }
             };
-
             await addDoc(collection(db, 'shows'), showData);
             resetForm();
         }
@@ -244,40 +212,275 @@
             smartRender();
         }
 
-        async function deleteShow(id) {
-            await deleteDoc(doc(db, 'shows', id));
-        }
-
-        async function deleteHistory(id) {
-            await deleteDoc(doc(db, 'history', id));
-        }
-
+        async function deleteShow(id) { await deleteDoc(doc(db, 'shows', id)); }
+        async function deleteHistory(id) { await deleteDoc(doc(db, 'history', id)); }
+        
         async function moveToWatchlist(item) {
             const showData = {
-                title: item.title,
-                service: item.service,
-                notes: item.notes,
-                type: item.type,
-                tmdbData: item.tmdbData,
-                addedDate: new Date().toISOString()
+                title: item.title, service: item.service, notes: item.notes,
+                type: item.type, tmdbData: item.tmdbData, addedDate: new Date().toISOString()
             };
             await addDoc(collection(db, 'shows'), showData);
             await deleteDoc(doc(db, 'history', item.id));
         }
 
         function resetForm() {
-            showForm = false;
-            searchMode = true;
-            searchQuery = '';
-            searchResults = [];
-            selectedShow = null;
-            formData = { title: '', year: '', genres: '', service: 'Netflix', notes: '' };
-            contentType = 'series';
-            smartRender();
+            showForm = false; searchMode = true; searchQuery = ''; searchResults = [];
+            selectedShow = null; formData = { title: '', year: '', genres: '', service: 'Netflix', notes: '' };
+            contentType = 'series'; smartRender();
         }
 
         function filterItems(items) {
             return items.filter(item => {
-                const matchesText = !filterText ||
-                    item.title.toLowerCase().includes(filterText.toLowerCase()) ||
+                const matchesText = !filterText || item.title.toLowerCase().includes(filterText.toLowerCase()) ||
                     item.service.toLowerCase().includes(filterText.toLowerCase()) ||
+                    item.tmdbData?.genres?.some(g => g.toLowerCase().includes(filterText.toLowerCase()));
+                const matchesService = filterService === 'all' || item.service === filterService;
+                const matchesType = filterType === 'all' || item.type === filterType;
+                return matchesText && matchesService && matchesType;
+            });
+        }
+        function render() {
+            isRendering = true;
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <div class="min-h-screen bg-gray-50">
+                    <div class="max-w-2xl mx-auto p-4">
+                        <header class="mb-6">
+                            <h1 class="text-3xl font-bold text-gray-900 mb-4">Show Tracker</h1>
+                            <div class="flex gap-2 mb-4">
+                                <button onclick="setView('watchlist')" class="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg ${view === 'watchlist' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700'}">
+                                    📺 Watchlist (${shows.length})
+                                </button>
+                                <button onclick="setView('history')" class="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg ${view === 'history' ? 'bg-blue-500 text-white' : 'bg-white text-gray-700'}">
+                                    ⏱️ History (${history.length})
+                                </button>
+                            </div>
+                            <div class="mb-4">
+                                <input type="text" placeholder="Filter by title, service, or genre" value="${filterText}" oninput="setFilterText(this.value)" class="w-full px-4 py-2 border border-gray-300 rounded-lg mb-2">
+                                <button onclick="toggleFilters()" class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
+                                    🔍 ${showFilters ? 'Hide' : 'Show'} Filters
+                                </button>
+                                ${showFilters ? `
+                                    <div class="flex gap-2 mt-2">
+                                        <select value="${filterService}" onchange="setFilterService(this.value)" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg">
+                                            <option value="all">All Services</option>
+                                            ${SERVICES.map(s => `<option value="${s}">${s}</option>`).join('')}
+                                        </select>
+                                        <select value="${filterType}" onchange="setFilterType(this.value)" class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg">
+                                            <option value="all">All Types</option>
+                                            <option value="series">Series Only</option>
+                                            <option value="movie">Movies Only</option>
+                                        </select>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            ${view === 'watchlist' ? `
+                                <button onclick="toggleForm()" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-lg font-medium">
+                                    ➕ Add Show or Movie
+                                </button>
+                            ` : ''}
+                        </header>
+                        ${showForm ? `
+                            <div class="bg-white rounded-lg p-4 mb-6 shadow">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="font-semibold">Add Content</h3>
+                                    <div class="flex gap-2 text-sm">
+                                        <button onclick="setSearchMode(true)" class="px-3 py-1 rounded ${searchMode ? 'bg-blue-500 text-white' : 'bg-gray-100'}">Search API</button>
+                                        <button onclick="setSearchMode(false)" class="px-3 py-1 rounded ${!searchMode ? 'bg-blue-500 text-white' : 'bg-gray-100'}">Manual</button>
+                                    </div>
+                                </div>
+                                <div class="flex gap-2 mb-3">
+                                    <button onclick="setContentType('series')" class="flex-1 py-2 rounded ${contentType === 'series' ? 'bg-blue-500 text-white' : 'bg-gray-100'}">TV Series</button>
+                                    <button onclick="setContentType('movie')" class="flex-1 py-2 rounded ${contentType === 'movie' ? 'bg-blue-500 text-white' : 'bg-gray-100'}">Movie</button>
+                                </div>
+                                ${searchMode ? `
+                                    <div>
+                                        <input id="searchInput" type="text" placeholder="Type to search" class="w-full px-4 py-2 border rounded-lg mb-3">
+                                        ${searching ? '<p class="text-center text-gray-500 py-4">Searching...</p>' : ''}
+                                        ${searchQuery && !searching && searchResults.length === 0 ? `
+                                            <div class="text-center py-4">
+                                                <p class="text-gray-500 mb-2">No results found</p>
+                                                <button onclick="setSearchMode(false)" class="text-sm text-blue-600 hover:underline">Switch to manual</button>
+                                            </div>
+                                        ` : ''}
+                                        ${searchResults.length > 0 && !selectedShow ? `
+                                            <div class="max-h-64 overflow-y-auto space-y-2 mb-3">
+                                                ${searchResults.map((result, idx) => {
+                                                    const isMovie = contentType === 'movie';
+                                                    const title = isMovie ? result.Title : result.name;
+                                                    const year = isMovie ? result.Year : (result.premiered ? new Date(result.premiered).getFullYear() : '');
+                                                    const poster = isMovie ? (result.Poster !== 'N/A' ? result.Poster : null) : result.image?.medium;
+                                                    return `
+                                                        <div onclick="selectShow(${idx})" class="flex gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer border">
+                                                            ${poster ? `<img src="${poster}" alt="${title}" class="w-12 h-18 object-cover rounded">` : '<div class="w-12 h-18 bg-gray-200 rounded"></div>'}
+                                                            <div><p class="font-medium text-sm">${title}</p><p class="text-xs text-gray-500">${year}</p></div>
+                                                        </div>
+                                                    `;
+                                                }).join('')}
+                                            </div>
+                                        ` : ''}
+                                        ${selectedShow ? `
+                                            <div>
+                                                <div class="mb-3 p-3 bg-green-50 rounded">
+                                                    <p class="font-medium">✓ ${contentType === 'movie' ? selectedShow.Title : selectedShow.name}</p>
+                                                </div>
+                                                <select value="${formData.service}" onchange="setService(this.value)" class="w-full px-4 py-2 border rounded-lg mb-3">
+                                                    ${SERVICES.map(s => `<option value="${s}">${s}</option>`).join('')}
+                                                </select>
+                                                <input id="notesInput" type="text" placeholder="Notes" class="w-full px-4 py-2 border rounded-lg mb-3">
+                                            </div>
+                                        ` : ''}
+                                        <div class="flex gap-2">
+                                            <button onclick="resetForm()" class="flex-1 px-4 py-2 border rounded-lg">Cancel</button>
+                                            <button onclick="addShowFromSearch()" ${!selectedShow ? 'disabled' : ''} class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">Add</button>
+                                        </div>
+                                    </div>
+                                ` : `
+                                    <div>
+                                        <input id="titleInput" type="text" placeholder="Title *" class="w-full px-4 py-2 border rounded-lg mb-3">
+                                        <input id="yearInput" type="text" placeholder="Year" class="w-full px-4 py-2 border rounded-lg mb-3">
+                                        <input id="genresInput" type="text" placeholder="Genres" class="w-full px-4 py-2 border rounded-lg mb-3">
+                                        <select value="${formData.service}" onchange="setService(this.value)" class="w-full px-4 py-2 border rounded-lg mb-3">
+                                            ${SERVICES.map(s => `<option value="${s}">${s}</option>`).join('')}
+                                        </select>
+                                        <input id="notesManualInput" type="text" placeholder="Notes" class="w-full px-4 py-2 border rounded-lg mb-3">
+                                        <div class="flex gap-2">
+                                            <button onclick="resetForm()" class="flex-1 px-4 py-2 border rounded-lg">Cancel</button>
+                                            <button onclick="addManualShow()" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg">Add</button>
+                                        </div>
+                                    </div>
+                                `}
+                            </div>
+                        ` : ''}
+                        ${view === 'watchlist' ? `
+                            <div class="space-y-3">
+                                ${filterItems(shows).length === 0 ? '<div class="text-center py-12 text-gray-500">No shows</div>' : 
+                                filterItems(shows).map(show => `
+                                    <div class="bg-white rounded-lg p-4 shadow">
+                                        <div class="flex gap-3">
+                                            ${show.tmdbData?.posterPath ? `<img src="${show.tmdbData.posterPath}" alt="${show.title}" class="w-16 h-24 object-cover rounded">` : ''}
+                                            <div class="flex-1">
+                                                <div class="flex justify-between mb-2">
+                                                    <div class="flex-1">
+                                                        <h3 class="font-semibold text-lg">${show.title} ${show.type === 'movie' ? '🎬' : '📺'}</h3>
+                                                        <p class="text-sm text-blue-600">${show.service}</p>
+                                                        ${show.tmdbData?.genres?.length ? `<p class="text-xs text-gray-500">${show.tmdbData.genres.join(', ')}</p>` : ''}
+                                                        ${show.tmdbData?.cast ? `<p class="text-xs text-gray-500">Cast: ${show.tmdbData.cast}</p>` : ''}
+                                                        ${show.tmdbData?.director ? `<p class="text-xs text-gray-500">Director: ${show.tmdbData.director}</p>` : ''}
+                                                    </div>
+                                                    <button onclick="deleteItem('shows','${show.id}')" class="text-gray-400">✕</button>
+                                                </div>
+                                                ${show.notes ? `<p class="text-sm italic mb-2">${show.notes}</p>` : ''}
+                                                <button onclick="openRating('${show.id}')" class="w-full px-4 py-2 bg-green-500 text-white rounded-lg text-sm">✓ Mark Watched</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `
+                            <div class="space-y-3">
+                                ${filterItems(history).length === 0 ? '<div class="text-center py-12 text-gray-500">No history</div>' :
+                                filterItems(history).map(show => `
+                                    <div class="bg-white rounded-lg p-4 shadow">
+                                        <div class="flex gap-3">
+                                            ${show.tmdbData?.posterPath ? `<img src="${show.tmdbData.posterPath}" alt="${show.title}" class="w-16 h-24 object-cover rounded">` : ''}
+                                            <div class="flex-1">
+                                                <div class="flex justify-between mb-2">
+                                                    <div class="flex-1">
+                                                        <h3 class="font-semibold text-lg">${show.title} ${show.type === 'movie' ? '🎬' : '📺'}</h3>
+                                                        <p class="text-sm text-blue-600">${show.service}</p>
+                                                        ${show.tmdbData?.genres?.length ? `<p class="text-xs text-gray-500">${show.tmdbData.genres.join(', ')}</p>` : ''}
+                                                        <p class="text-xs text-gray-500">Watched ${new Date(show.watchedDate).toLocaleDateString()}</p>
+                                                    </div>
+                                                    <button onclick="deleteItem('history','${show.id}')" class="text-gray-400">✕</button>
+                                                </div>
+                                                ${show.notes ? `<p class="text-sm italic mb-2">${show.notes}</p>` : ''}
+                                                <div class="flex justify-between items-center">
+                                                    <div class="flex gap-1">${[1,2,3,4,5].map(n => `<span class="${n <= show.rating ? 'text-yellow-400' : 'text-gray-300'}">⭐</span>`).join('')}</div>
+                                                    <button onclick="moveToWatchlist('${show.id}')" class="text-sm text-blue-600 px-3 py-1 rounded">Re-watch</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `}
+                    </div>
+                    ${ratingShow ? `
+                        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onclick="if(event.target===this)closeRating()">
+                            <div class="bg-white rounded-lg p-6 max-w-sm w-full">
+                                <h3 class="text-lg font-semibold mb-4">Rate "${ratingShow.title}"</h3>
+                                <div class="flex justify-center gap-2 mb-6">
+                                    ${[1,2,3,4,5].map(n => `<button onclick="setRating(${n})" class="text-3xl ${n <= (window.tempRating || 0) ? 'text-yellow-400' : 'text-gray-300'}">⭐</button>`).join('')}
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="closeRating()" class="flex-1 px-4 py-2 border rounded-lg">Cancel</button>
+                                    <button onclick="confirmRating()" ${!(window.tempRating) ? 'disabled' : ''} class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg disabled:opacity-50">Done</button>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            attachEventListeners();
+            isRendering = false;
+        }
+
+        function attachEventListeners() {
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.value = searchQuery;
+                searchInput.addEventListener('input', (e) => handleSearchInput(e.target.value));
+            }
+            const titleInput = document.getElementById('titleInput');
+            if (titleInput) {
+                titleInput.value = formData.title;
+                titleInput.addEventListener('input', (e) => { formData.title = e.target.value; });
+            }
+            const yearInput = document.getElementById('yearInput');
+            if (yearInput) {
+                yearInput.value = formData.year;
+                yearInput.addEventListener('input', (e) => { formData.year = e.target.value; });
+            }
+            const genresInput = document.getElementById('genresInput');
+            if (genresInput) {
+                genresInput.value = formData.genres;
+                genresInput.addEventListener('input', (e) => { formData.genres = e.target.value; });
+            }
+            const notesInput = document.getElementById('notesInput');
+            if (notesInput) {
+                notesInput.value = formData.notes;
+                notesInput.addEventListener('input', (e) => { formData.notes = e.target.value; });
+            }
+            const notesManualInput = document.getElementById('notesManualInput');
+            if (notesManualInput) {
+                notesManualInput.value = formData.notes;
+                notesManualInput.addEventListener('input', (e) => { formData.notes = e.target.value; });
+            }
+
+            window.setView = (v) => { view = v; smartRender(); };
+            window.toggleForm = () => { showForm = !showForm; smartRender(); };
+            window.toggleFilters = () => { showFilters = !showFilters; smartRender(); };
+            window.setFilterText = (v) => { filterText = v; smartRender(); };
+            window.setFilterService = (v) => { filterService = v; smartRender(); };
+            window.setFilterType = (v) => { filterType = v; smartRender(); };
+            window.setSearchMode = (v) => { searchMode = v; searchResults = []; selectedShow = null; formData.notes = ''; smartRender(); };
+            window.setContentType = (v) => { contentType = v; searchQuery = ''; searchResults = []; selectedShow = null; smartRender(); };
+            window.setService = (v) => { formData.service = v; smartRender(); };
+            window.selectShow = (idx) => { selectedShow = searchResults[idx]; formData.notes = ''; smartRender(); };
+            window.addShowFromSearch = addShowFromSearch;
+            window.addManualShow = addManualShow;
+            window.resetForm = resetForm;
+            window.deleteItem = (type, id) => { type === 'history' ? deleteHistory(id) : deleteShow(id); };
+            window.openRating = (id) => { ratingShow = shows.find(s => s.id === id); window.tempRating = 0; smartRender(); };
+            window.closeRating = () => { ratingShow = null; window.tempRating = 0; smartRender(); };
+            window.setRating = (n) => { window.tempRating = n; smartRender(); };
+            window.confirmRating = () => { markWatched(ratingShow, window.tempRating); };
+            window.moveToWatchlist = (id) => { moveToWatchlist(history.find(h => h.id === id)); };
+        }
+
+        render();
+    </script>
+</body>
+</html>
