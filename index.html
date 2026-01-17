@@ -412,7 +412,7 @@
                             <div class="bg-white rounded-lg p-6 max-w-sm w-full">
                                 <h3 class="text-lg font-semibold mb-4">Rate "${ratingShow.title}"</h3>
                                 <div class="flex justify-center gap-2 mb-6">
-                                    ${[1,2,3,4,5].map(n => `<button onclick="setRating(${n})" class="text-3xl ${n <= (window.tempRating || 0) ? 'text-yellow-400' : 'text-gray-300'}">⭐</button>`).join('')}
+                                    ${[1,2,3,4,5].map(n => `<button onclick="setRating(${n})" class="text-3xl ${n <= (window.tempRating || 0) ? 'opacity-100' : 'opacity-30'}">⭐</button>`).join('')}
                                 </div>
                                 <div class="flex gap-2">
                                     <button onclick="closeRating()" class="flex-1 px-4 py-2 border rounded-lg">Cancel</button>
