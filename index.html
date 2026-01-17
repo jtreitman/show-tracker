@@ -49,7 +49,7 @@
         let searching = false;
         let selectedShow = null;
         let contentType = 'series';
-        let formData = { title: '', year: '', genres: '', service: 'Netflix', notes: '' };
+        let formData = { title: '', year: '', genres: '', service: '', notes: '' };
         let filterText = '';
         let showFilters = false;
         let filterService = 'all';
@@ -325,7 +325,8 @@
                                                 <div class="mb-3 p-3 bg-green-50 rounded">
                                                     <p class="font-medium">✓ ${contentType === 'movie' ? selectedShow.Title : selectedShow.name}</p>
                                                 </div>
-                                                <select value="${formData.service}" onchange="setService(this.value)" class="w-full px-4 py-2 border rounded-lg mb-3">
+                                                <select value="${formData.service}" onchange="setService(this.value)" class="...">
+                                                    <option value="" disabled>Select service...</option>
                                                     ${SERVICES.map(s => `<option value="${s}">${s}</option>`).join('')}
                                                 </select>
                                                 <input id="notesInput" type="text" placeholder="Notes" class="w-full px-4 py-2 border rounded-lg mb-3">
